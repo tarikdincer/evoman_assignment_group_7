@@ -79,6 +79,7 @@ def norm(x, pfit_pop):
 def truncation_random_hybrid_selection(pop,ratio):
     popsize = pop.shape[0]
     indices = list(range(popsize))
+    ratio = int(1//ratio)
     slicesize = popsize//ratio
     combined = list(zip(fit_pop,pop))
     #print(pop[0], fit_pop[0])
@@ -116,8 +117,8 @@ def crossover(pop):
 
 
     for p in range(0,pop.shape[0], 2):
-        p1 = truncation_random_hybrid_selection(pop,3)
-        p2 = truncation_random_hybrid_selection(pop,3)
+        p1 = truncation_random_hybrid_selection(pop,0.33)
+        p2 = truncation_random_hybrid_selection(pop,0.33)
 
         n_offspring =   np.random.randint(1,3+1, 1)[0]
         offspring =  np.zeros( (n_offspring, n_vars) )

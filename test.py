@@ -17,6 +17,7 @@ def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
     """
     popsize = len(pop)
     indices = list(range(popsize))
+    ratio = int(1//ratio)
     slicesize = nparents//ratio
     combined = list(zip(fit,indices))
 
@@ -28,4 +29,4 @@ def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
 
     return best_individuals + random_ind
 
-print(truncation_random_hybrid_selection(population, popfitness, 10, 3))
+print(truncation_random_hybrid_selection(population, popfitness, 10, 0.33))
