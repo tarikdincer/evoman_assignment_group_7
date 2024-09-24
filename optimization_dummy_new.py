@@ -17,6 +17,7 @@ from demo_controller import player_controller
 # imports other libs
 import numpy as np
 from scipy.special import softmax
+from scipy.stats import percentileofscore
 import os
 
 # runs simulation
@@ -66,6 +67,9 @@ learning_rate = 1/sqrt(n_vars)
 init_step_size = 0.5
 u_boundary_step_size = 1
 l_boundary_step_size = 0
+l_percentile_guided = 25
+u_percentile_guided = 75
+guided_influence = 0.1
 
 # start writing your own code from here
 def survival_selection(pop, fit_pop, num_selected):
@@ -77,7 +81,6 @@ def survival_selection(pop, fit_pop, num_selected):
     if min_fitness < 0:
         normalized_fitness = fit_pop - min_fitness
         
-
     
     probs = normalized_fitness / np.sum(normalized_fitness)
     
@@ -89,19 +92,14 @@ def survival_selection(pop, fit_pop, num_selected):
     
     if num_selected > (pop.shape[0] - 1):
         num_selected = (pop.shape[0] - 1)
-    print(pop.shape[0])
-    print(probs.shape[0])
+
     indices = np.random.choice(pop.shape[0], num_selected, p = probs, replace=False)
-    print("test 3", probs.shape[0])
+
     selected_pop = pop[indices]
     selected_fit = fit_pop[indices]
-    print("test 4", selected_fit.shape[0])
-    # print(selected_pop, best_nn)
-    # print(selected_fit, best_fit)
-    print(selected_fit, best_fit)
+
     selected_pop = np.vstack([selected_pop, best_nn])
     selected_fit = np.append(selected_fit, best_fit)
-    print("test 5", selected_fit.shape[0])
     
     return selected_pop, selected_fit
 
@@ -123,6 +121,13 @@ def limits(x):
         return dom_l
     else:
         return x
+    
+    
+# calculates the percintile of the of the offspring's fitness in the population 
+def fitness_percentile(fitness, fit_pop):
+    offspring_fitness_percentile = percentileofscore(fit_pop, fitness)
+
+    return offspring_fitness_percentile
 
 # weighted average crossover function
 def crossover(pop, fit_pop, parents):
@@ -145,22 +150,27 @@ def crossover(pop, fit_pop, parents):
             w1, w2 = softmax([fit_pop[parents[p]], fit_pop[parents[p+1]]])
             # cross_prob = np.random.uniform(0,1)
             offspring[f] = w1 * p1 + p2 * w2
-            
-            #TODO: here 
-            # my idea for incorporating the guided fitness mutation alongside the adaptive stepsize 
-            # is to compare the fitness of the current offspring to the rest of the population. If it is below
-            # a certain treshold of the population add an additional value to the step-size or it is probably better/neater
-            # to change the mean of new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1)) normal distribution a bit
-            # maybe 50/50 pos/neg
 
-            #probably need to initialize the stepsize randomly
+            #check if initializing the stepsize randomly affects the performance of the model
 
+            # calculate the fitness of the offspring and compute it's percentile in the population
+            offspring_fitness = simulation(env, offspring[f])
+            percentile = fitness_percentile(offspring_fitness, fit_pop)
 
-            # obtain the step_size from the offspring 
+            # obtain the current step_size from the offspring 
             step_size = offspring[f][n_vars]
+            
+            new_step_size = 0
 
-            # mutate the step_size
-            new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1))
+            # update the stepsize for adaptive step-size but also take the fitness of the offspring into account by adjusting the mean of the normal distribution
+            # if the offspring is below a certain percentile in the population mean is increased such that the stepsize on average slightly increases and conversely
+            # if the offspring is above a certain percentile decrease the mean slightly to decrease the stepsize
+            if percentile < l_percentile_guided:
+                new_step_size = step_size * exp(learning_rate * np.random.normal(guided_influence, 1))
+            elif percentile > u_percentile_guided:
+                new_step_size = step_size * exp(learning_rate * np.random.normal( - guided_influence, 1))
+            else:
+                new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1))
 
             # ensures step size stays within boundaries
             new_step_size = boundaries_step_size(new_step_size)
@@ -297,14 +307,13 @@ for i in range(ini_g+1, gens):
     fit_offspring = evaluate(env, offspring)   # evaluation
     pop = np.vstack((pop,offspring))
     fit_pop = np.append(fit_pop,fit_offspring)
-    print("test 1 ", pop.shape[0])
 
     best = np.argmax(fit_pop) #best solution in generation
     fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
     best_sol = fit_pop[best]
 
     pop, fit_pop = survival_selection(pop, fit_pop, npop)
-    print("test 2 ", pop.shape[0])
+    
 
 
 
