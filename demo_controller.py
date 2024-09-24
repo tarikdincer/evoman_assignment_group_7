@@ -16,25 +16,31 @@ def sigmoid_activation(x):
 class player_controller(Controller):
 	def __init__(self, _n_hidden):
 		self.n_hidden = [_n_hidden]
+		
+		# only one stepsize per individual at the moment maybe extend to one stepsize per gene
+		self.length_step_size = 1
 
 	def set(self,controller, n_inputs):
-		# Number of hidden neurons
 
+		# trimming the controller from the stepsize
+		trimmed_controller = controller[:-self.length_step_size]
+
+		# Number of hidden neurons
 		if self.n_hidden[0] > 0:
 			# Preparing the weights and biases from the controller of layer 1
 
 			# Biases for the n hidden neurons
-			self.bias1 = controller[:self.n_hidden[0]].reshape(1, self.n_hidden[0])
+			self.bias1 = trimmed_controller[:self.n_hidden[0]].reshape(1, self.n_hidden[0])
 			# Weights for the connections from the inputs to the hidden nodes
 			weights1_slice = n_inputs * self.n_hidden[0] + self.n_hidden[0]
-			self.weights1 = controller[self.n_hidden[0]:weights1_slice].reshape((n_inputs, self.n_hidden[0]))
+			self.weights1 = trimmed_controller[self.n_hidden[0]:weights1_slice].reshape((n_inputs, self.n_hidden[0]))
 
 			# Outputs activation first layer.
 
 
 			# Preparing the weights and biases from the controller of layer 2
-			self.bias2 = controller[weights1_slice:weights1_slice + 5].reshape(1, 5)
-			self.weights2 = controller[weights1_slice + 5:].reshape((self.n_hidden[0], 5))
+			self.bias2 = trimmed_controller[weights1_slice:weights1_slice + 5].reshape(1, 5)
+			self.weights2 = trimmed_controller[weights1_slice + 5:].reshape((self.n_hidden[0], 5))
 
 	def control(self, inputs, controller):
 		# Normalises the input using min-max scaling
@@ -49,8 +55,11 @@ class player_controller(Controller):
 			# Outputting activated second layer. Each entry in the output is an action
 			output = sigmoid_activation(output1.dot(self.weights2)+ self.bias2)[0]
 		else:
-			bias = controller[:5].reshape(1, 5)
-			weights = controller[5:].reshape((len(inputs), 5))
+			# trimming the controller from the stepsize
+			trimmed_controller = controller[:-self.length_step_size]
+			
+			bias = trimmed_controller[:5].reshape(1, 5)
+			weights = trimmed_controller[5:].reshape((len(inputs), 5))
 
 			output = sigmoid_activation(inputs.dot(weights) + bias)[0]
 

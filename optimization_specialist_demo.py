@@ -14,7 +14,7 @@ from demo_controller import player_controller
 # imports other libs
 import time
 import numpy as np
-from math import fabs,sqrt
+from math import fabs,sqrt,exp
 import glob, os
 
 
@@ -56,9 +56,12 @@ ini = time.time()  # sets time marker
 
 run_mode = 'train' # train or test
 
-# number of weights for multilayer with 10 hidden neurons
-n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5
 
+# for now we only have one stepsize per individual
+num_step_size = 1
+
+# number of weights for multilayer with 10 hidden neurons
+n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5 
 
 dom_u = 1
 dom_l = -1
@@ -66,6 +69,10 @@ npop = 100
 gens = 30
 mutation = 0.2
 last_best = 0
+learning_rate = 1/sqrt(n_vars)
+init_step_size = 0.5
+u_boundary_step_size = 1
+l_boundary_step_size = 0
 
 
 # runs simulation
@@ -112,6 +119,14 @@ def limits(x):
     else:
         return x
 
+# ensures that the step_size stays within these boundaries
+def boundaries_step_size(x):
+    if x>u_boundary_step_size:
+        return u_boundary_step_size
+    elif x<l_boundary_step_size:
+        return l_boundary_step_size
+    else:
+        return x
 
 # crossover
 def crossover(pop):
@@ -142,6 +157,59 @@ def crossover(pop):
 
     return total_offspring
 
+def crossover_self_adaptive_mutation(pop):
+
+    total_offspring = np.zeros((0,n_vars + num_step_size))
+
+
+
+    for p in range(0,pop.shape[0], 2):
+        p1 = tournament(pop)
+        p2 = tournament(pop)
+
+        n_offspring =   np.random.randint(1,3+1, 1)[0]
+        offspring =  np.zeros((n_offspring, n_vars + num_step_size))
+
+        for f in range(0,n_offspring):
+
+            cross_prop = np.random.uniform(0,1)
+            offspring[f] = p1*cross_prop+p2*(1-cross_prop)
+            
+            #TODO: here 
+            # my idea for incorporating the guided fitness mutation alongside the adaptive stepsize 
+            # is to compare the fitness of the current offspring to the rest of the population. If it is below
+            # a certain treshold of the population add an additional value to the step-size or it is probably better/neater
+            # to change the mean of new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1)) normal distribution a bit
+            # maybe 50/50 pos/neg
+
+            #probably need to initialize the stepsize randomly
+
+
+            # obtain the step_size from the offspring 
+            step_size = offspring[f][n_vars]
+
+            # mutate the step_size
+            new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1))
+
+            # ensures step size stays within boundaries
+            new_step_size = boundaries_step_size(new_step_size)
+
+            # set the new stepsize for the offspring
+            offspring[f][n_vars] = new_step_size
+
+            # mutation using updated step size
+            for i in range(0,len(offspring[f] - num_step_size)):
+                if np.random.uniform(0 ,1)<=mutation:
+                    offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
+
+            offspring[f] = np.array(list(map(lambda y: limits(y), offspring[f])))
+
+            total_offspring = np.vstack((total_offspring, offspring[f]))
+
+    return total_offspring
+
+
+
 
 # kills the worst genomes, and replace with new best/random solutions
 def doomsday(pop,fit_pop):
@@ -151,7 +219,7 @@ def doomsday(pop,fit_pop):
     orderasc = order[0:worst]
 
     for o in orderasc:
-        for j in range(0,n_vars):
+        for j in range(0,n_vars + num_step_size):
             pro = np.random.uniform(0,1)
             if np.random.uniform(0,1)  <= pro:
                 pop[o][j] = np.random.uniform(dom_l, dom_u) # random dna, uniform dist.
@@ -182,6 +250,11 @@ if not os.path.exists(experiment_name+'/evoman_solstate'):
     print( '\nNEW EVOLUTION\n')
 
     pop = np.random.uniform(dom_l, dom_u, (npop, n_vars))
+
+    # initialize the step-size for self-adaptive step-size mutation. Initial value is set to init_step_size
+    pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
+
+    print(pop)
     fit_pop = evaluate(pop)
     best = np.argmax(fit_pop)
     mean = np.mean(fit_pop)
@@ -225,13 +298,14 @@ notimproved = 0
 
 for i in range(ini_g+1, gens):
 
-    offspring = crossover(pop)  # crossover
+    offspring = crossover_self_adaptive_mutation(pop)  # crossover
     fit_offspring = evaluate(offspring)   # evaluation
     pop = np.vstack((pop,offspring))
     fit_pop = np.append(fit_pop,fit_offspring)
+    print(pop)
 
     best = np.argmax(fit_pop) #best solution in generation
-    fit_pop[best] = float(evaluate(np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
+    fit_pop[best] = float(evaluate(np.array([pop[best]]))[0]) # repeats best eval, for stability issues
     best_sol = fit_pop[best]
 
     # selection
