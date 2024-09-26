@@ -2,4 +2,4 @@
 
 MESSAGE: Pygame initialized for simulation.
 
-PARAMETER CHANGE: enemies = [2]
+PARAMETER CHANGE: enemies = [8]

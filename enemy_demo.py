@@ -22,8 +22,8 @@ n_hidden_neurons = 10
 
 # initializes environment for single objective mode (specialist)  with static enemy and ai player
 env = Environment(experiment_name=experiment_name,
-				  playermode="ai",
-				  player_controller=player_controller(n_hidden_neurons),
+				  playermode="human",
+				  loadplayer= "yes",
 			  	  speed="normal",
 				  enemymode="static",
 				  level=2,
@@ -32,11 +32,8 @@ env = Environment(experiment_name=experiment_name,
 
 # tests saved demo solutions for each enemy
 
-en = 1
+en = 8
 	#Update the enemy
 env.update_parameter('enemies',[en])
 
-	# Load specialist controller
-sol = np.loadtxt('optimization_test_task/best.txt')
-print('\n LOADING SAVED SPECIALIST SOLUTION FOR ENEMY 2 \n')
-env.play(sol)
+env.play()

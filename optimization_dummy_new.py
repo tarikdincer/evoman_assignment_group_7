@@ -31,6 +31,7 @@ def evaluate(env, x):
 
 ini = time.time()  # sets time marker
 run_mode = 'train'
+experiment_type = "dynamic"
 headless = True
 if headless:
     os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -44,7 +45,7 @@ n_hidden_neurons = 10
 
 # initializes simulation in individual evolution mode, for single static enemy.
 env = Environment(experiment_name=experiment_name,
-                enemies=[2],
+                enemies=[3],
                 playermode="ai",
                 player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
                 enemymode="static",
@@ -60,11 +61,11 @@ ratio = 0.33
 dom_u = 1
 dom_l = -1
 npop = 100
-gens = 200
+gens = 100
 mutation = 0.2
 num_step_size = 1
 learning_rate = 1/sqrt(n_vars)
-init_step_size = 0.5
+init_step_size = 0.05
 u_boundary_step_size = 1
 l_boundary_step_size = 0
 l_percentile_guided = 25
@@ -131,7 +132,7 @@ def fitness_percentile(fitness, fit_pop):
 
 # weighted average crossover function
 def crossover(pop, fit_pop, parents):
-
+    print("Crossover with dynamic mutation")
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
     
@@ -182,6 +183,40 @@ def crossover(pop, fit_pop, parents):
             for i in range(0,len(offspring[f] - num_step_size)):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
+
+            offspring[f] = np.array(list(map(lambda y: limits(y), offspring[f])))
+
+            total_offspring = np.vstack((total_offspring, offspring[f]))
+
+    return total_offspring
+
+# weighted average crossover function with static mutation
+def crossover_static_mutation(pop, fit_pop, parents):
+    print("Crossover with static mutation")
+    # initialize output array 
+    total_offspring = np.zeros((0,n_vars + 1))
+    
+    for p in range(0,len(parents), 2):
+
+        # select parents
+        p1 = pop[parents[p]]
+        p2 = pop[parents[p+1]]
+        
+        n_offspring = 1
+        offspring =  np.zeros((n_offspring, n_vars + num_step_size))
+
+        # TODO: add mutation
+        for f in range(1):
+            # get weights for weighted average by using softmax
+            w1, w2 = softmax([fit_pop[parents[p]], fit_pop[parents[p+1]]])
+            # cross_prob = np.random.uniform(0,1)
+            offspring[f] = w1 * p1 + p2 * w2
+
+
+            # mutation using updated step size
+            for i in range(0,len(offspring[f] - num_step_size)):
+                if np.random.uniform(0 ,1)<=mutation:
+                    offspring[f][i] =   offspring[f][i]+np.random.normal(0, init_step_size)
 
             offspring[f] = np.array(list(map(lambda y: limits(y), offspring[f])))
 
@@ -266,7 +301,7 @@ if not os.path.exists(experiment_name+'/evoman_solstate'):
     ini_g = 0
     solutions = [pop, fit_pop]
     env.update_solutions(solutions)
-
+    
 else:
 
     print( '\nCONTINUING EVOLUTION\n')
@@ -303,7 +338,7 @@ notimproved = 0
 for i in range(ini_g+1, gens):
     parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
     random.shuffle(parents)
-    offspring = crossover(pop, fit_pop, parents)  # crossover
+    offspring = crossover(pop, fit_pop, parents) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents) # crossover
     fit_offspring = evaluate(env, offspring)   # evaluation
     pop = np.vstack((pop,offspring))
     fit_pop = np.append(fit_pop,fit_offspring)
