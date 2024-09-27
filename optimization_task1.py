@@ -19,6 +19,7 @@ import numpy as np
 from scipy.special import softmax
 from scipy.stats import percentileofscore
 import os
+import matplotlib.pyplot as plt
 
 # runs simulation
 def simulation(env,x):
@@ -29,7 +30,7 @@ def simulation(env,x):
 def evaluate(env, x):
     return np.array(list(map(lambda y: simulation(env,y), x)))
 
-ini = time.time()  # sets time marker
+
 run_mode = 'train'
 experiment_type = "dynamic"
 headless = True
@@ -37,7 +38,7 @@ if headless:
     os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 
-experiment_name = 'optimization_test_task'
+experiment_name = 'optimization_task1'
 if not os.path.exists(experiment_name):
     os.makedirs(experiment_name)
 
@@ -60,8 +61,8 @@ n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5
 ratio = 0.33
 dom_u = 1
 dom_l = -1
-npop = 100
-gens = 100
+npop = 50
+gens = 25
 mutation = 0.2
 num_step_size = 1
 learning_rate = 1/sqrt(n_vars)
@@ -84,6 +85,9 @@ def survival_selection(pop, fit_pop, num_selected):
         
     
     probs = normalized_fitness / np.sum(normalized_fitness)
+
+    probs = np.maximum(probs, 0.01)
+    probs = probs / np.sum(probs)
     
     best_idx = np.argmax(fit_pop)
     best_nn = pop[best_idx]
@@ -192,7 +196,6 @@ def crossover(pop, fit_pop, parents):
 
 # weighted average crossover function with static mutation
 def crossover_static_mutation(pop, fit_pop, parents):
-    print("Crossover with static mutation")
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
     
@@ -205,7 +208,7 @@ def crossover_static_mutation(pop, fit_pop, parents):
         n_offspring = 1
         offspring =  np.zeros((n_offspring, n_vars + num_step_size))
 
-        # TODO: add mutation
+        # mutation
         for f in range(1):
             # get weights for weighted average by using softmax
             w1, w2 = softmax([fit_pop[parents[p]], fit_pop[parents[p+1]]])
@@ -251,118 +254,180 @@ def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
 
     return best_individuals + random_ind
 
-
-# loads file with the best solution for testing
-if run_mode =='test':
-
-    bsol = np.loadtxt(experiment_name+'/best.txt')
+def test_solution(alg_idx, run_idx):
+    bsol = np.loadtxt(f'{experiment_name}/best{alg_idx}_{run_idx}.txt')
     print( '\n RUNNING SAVED BEST SOLUTION \n')
     env.update_parameter('speed','normal')
-    evaluate([bsol])
+    x = evaluate([bsol])
 
-    sys.exit(0)
+    return x
 
-
-# initializes population loading old solutions or generating new ones
-
-if not os.path.exists(experiment_name+'/evoman_solstate'):
-
-    print( '\nNEW EVOLUTION\n')
-
-    pop = np.random.uniform(dom_l, dom_u, (npop, n_vars)) # creating npop size nn's with weights in between -1 and 1
-    pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
-    fit_pop = evaluate(env, pop) #returns an array that stores the fitness of each nn
-    best = np.argmax(fit_pop)
-    mean = np.mean(fit_pop)
-    std = np.std(fit_pop)
-    ini_g = 0
-    solutions = [pop, fit_pop]
-    env.update_solutions(solutions)
+def plot_fitness(static_mean_avg, static_best_avg,
+                 dynamic_mean_avg, dynamic_best_avg, enemy):
     
-else:
+    generations = np.arange(1, gens + 1)
+    
+    plt.figure(figsize=(10, 6))
+    
+    plt.plot(generations, static_mean_avg, label='Static Mutation - Mean Fitness', 
+                  color='red', linestyle='-')
+    plt.plot(generations, static_best_avg, label='Static Mutation - Best Fitness', 
+                  color='red', linestyle='--')
+    plt.plot(generations, dynamic_mean_avg, label='Dynamic Mutation - Mean Fitness', 
+                  color='blue', linestyle='-')
+    plt.plot(generations, dynamic_best_avg, label='Dynamic Mutation - Best Fitness', 
+                  color='blue', linestyle='--')
 
-    print( '\nCONTINUING EVOLUTION\n')
+    plt.title(f'Fitness Progression for Static and Dynamic Mutation for Enemy {enemy}')
+    plt.xlabel('Generations')
+    plt.ylabel('Fitness')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
-    env.load_state()
-    pop = env.solutions[0]
-    fit_pop = env.solutions[1]
+def plot_std(static_mean_std, static_best_std,
+                 dynamic_mean_std, dynamic_best_std, enemy):
+    
+    generations = np.arange(1, gens + 1)
+    
+    plt.figure(figsize=(10, 6))
+    
+    plt.plot(generations, static_mean_std, label='Static Mutation - Mean Std', 
+                  color='red', linestyle='-')
+    plt.plot(generations, static_best_std, label='Static Mutation - Best Std', 
+                  color='red', linestyle='--')
+    plt.plot(generations, dynamic_mean_std, label='Dynamic Mutation - Mean Std', 
+                  color='blue', linestyle='-')
+    plt.plot(generations, dynamic_best_std, label='Dynamic Mutation - Best Std', 
+                  color='blue', linestyle='--')
 
-    best = np.argmax(fit_pop)
-    mean = np.mean(fit_pop)
-    std = np.std(fit_pop)
+    plt.title(f'Standart Deviation Progression for Static and Dynamic Mutation for Enemy {enemy}')
+    plt.xlabel('Generations')
+    plt.ylabel('Standart Deviation')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
-    # finds last generation number
-    file_aux  = open(experiment_name+'/gen.txt','r')
-    ini_g = int(file_aux.readline())
-    file_aux.close()
+def calculate_avg_std(stats, n_runs, n_gens):
+    mean_fit_avg = np.zeros(n_gens)
+    mean_fit_std = np.zeros(n_gens)
+    best_fit_avg = np.zeros(n_gens)
+    best_fit_std = np.zeros(n_gens)
+
+    for gen in range(n_gens):
+        mean_fit_gen = [stats[run][gen]['mean'] for run in range(n_runs)]
+        best_fit_gen = [stats[run][gen]['best_fit'] for run in range(n_runs)]
+
+        mean_fit_avg[gen] = np.mean(mean_fit_gen)
+        mean_fit_std[gen] = np.std(mean_fit_gen)
+        best_fit_avg[gen] = np.mean(best_fit_gen)
+        best_fit_std[gen] = np.std(best_fit_gen)
+
+    return mean_fit_avg, mean_fit_std, best_fit_avg, best_fit_std
+
+def run_evolution(n_runs):
+    static_stats = []
+    dynamic_stats = []
+    enemy_set = [3, 5, 8]
+    for en in enemy_set:
+        env.update_parameter('enemies',[en])
+        for n_alg in range(2):
+            experiment_type = "static" if n_alg == 0 else "dynamic"
+            for n_run in range(n_runs):
+                print(f'Running {n_run + 1}. run with {experiment_type} mutation')
+                print( '\nNEW EVOLUTION\n')
+                
+                pop = np.random.uniform(dom_l, dom_u, (npop, n_vars)) # creating npop size nn's with weights in between -1 and 1
+                pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
+                fit_pop = evaluate(env, pop) #returns an array that stores the fitness of each nn
+                best = np.argmax(fit_pop)
+                mean = np.mean(fit_pop)
+                std = np.std(fit_pop)
+                ini_g = 0
+                solutions = [pop, fit_pop]
+                env.update_solutions(solutions)
 
 
+                # saves results for first pop
+                file_aux  = open(f'{experiment_name}/results_{n_alg+1}_{n_run+1}.txt','a')
+                file_aux.write('\n\ngen best mean std')
+                print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
+                file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
+                file_aux.close()
+
+                if experiment_type == "static":
+                    static_stats.append([])  # Initialize list for this run
+                else:
+                    dynamic_stats.append([])  # Initialize list for this run
+
+                # evolution
+
+                for i in range(ini_g+1, gens + 1):
+                    ini = round(time.time() * 1000)
+                    if experiment_type == "static":
+                        static_stats.append([])
+                    else:
+                        dynamic_stats.append([])
+                    
+                    parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
+                    random.shuffle(parents)
+                    offspring = crossover(pop, fit_pop, parents) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents) # crossover
+                    fit_offspring = evaluate(env, offspring)   # evaluation
+                    pop = np.vstack((pop,offspring))
+                    fit_pop = np.append(fit_pop,fit_offspring)
+
+                    best = np.argmax(fit_pop) #best solution in generation
+                    fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
+                    best_sol = fit_pop[best]
+
+                    pop, fit_pop = survival_selection(pop, fit_pop, npop)
+
+                    best = np.argmax(fit_pop)
+                    std  =  np.std(fit_pop)
+                    mean = np.mean(fit_pop)
+                    end = round(time.time() * 1000)
+
+                    generation_stats = {"mean": mean, "best": best, "std": std, "best_fit": fit_pop[best], "best": pop[best], "time": round((end-ini))}
+                    
+                    if experiment_type == 'static':
+                        static_stats[n_run].append(generation_stats)
+                    else:
+                        dynamic_stats[n_run].append(generation_stats)
 
 
-# saves results for first pop
-file_aux  = open(experiment_name+'/results.txt','a')
-file_aux.write('\n\ngen best mean std')
-print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
-file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
-file_aux.close()
+                    # saves results
+                    file_aux  = open(f'{experiment_name}/results_{n_alg+1}_{n_run+1}.txt','a')
+                    print( '\n GENERATION '+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
+                    file_aux.write('\n'+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
+                    file_aux.close()
 
+                    # saves generation number
+                    file_aux  = open(f'{experiment_name}/gen_{n_alg+1}_{n_run+1}.txt','w')
+                    file_aux.write(str(i))
+                    file_aux.close()
 
-# evolution
+                    # saves file with the best solution
+                    np.savetxt(f'{experiment_name}/best_{n_alg+1}_{n_run+1}.txt',pop[best])
 
-last_sol = fit_pop[best]
-notimproved = 0
+                    # saves simulation state
+                    solutions = [pop, fit_pop]
+                    env.update_solutions(solutions)
+                    env.save_state()
+                
+        for idx, stat in enumerate(static_stats):
+            for gen_idx, gen in enumerate(stat):
+                print(f"Static {idx + 1}. run {gen_idx + 1}. generation results: Mean:{stat[gen_idx]["mean"]} Std:{stat[gen_idx]["std"]} Best Fitness:{stat[gen_idx]["best_fit"]} Time:{stat[gen_idx]["time"]}")
+        for idx, stat in enumerate(dynamic_stats):
+            for gen_idx, gen in enumerate(stat):
+                print(f"Dynamic {idx + 1}. run {gen_idx + 1}. generation results: Mean:{stat[gen_idx]["mean"]} Std:{stat[gen_idx]["std"]} Best Fitness:{stat[gen_idx]["best_fit"]} Time:{stat[gen_idx]["time"]}")
+        
+        static_mean_avg, static_mean_std, static_best_avg, static_best_std = calculate_avg_std(static_stats, n_runs, gens)
+        dynamic_mean_avg, dynamic_mean_std, dynamic_best_avg, dynamic_best_std = calculate_avg_std(dynamic_stats, n_runs, gens)    
 
-for i in range(ini_g+1, gens):
-    parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
-    random.shuffle(parents)
-    offspring = crossover(pop, fit_pop, parents) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents) # crossover
-    fit_offspring = evaluate(env, offspring)   # evaluation
-    pop = np.vstack((pop,offspring))
-    fit_pop = np.append(fit_pop,fit_offspring)
-
-    best = np.argmax(fit_pop) #best solution in generation
-    fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
-    best_sol = fit_pop[best]
-
-    pop, fit_pop = survival_selection(pop, fit_pop, npop)
+        plot_fitness(static_mean_avg, static_best_avg,
+             dynamic_mean_avg, dynamic_best_avg, en)
+        plot_std(static_mean_std, static_best_std,
+             dynamic_mean_std, dynamic_best_std, en)
     
 
-
-
-    best = np.argmax(fit_pop)
-    std  =  np.std(fit_pop)
-    mean = np.mean(fit_pop)
-
-
-    # saves results
-    file_aux  = open(experiment_name+'/results.txt','a')
-    print( '\n GENERATION '+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
-    file_aux.write('\n'+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
-    file_aux.close()
-
-    # saves generation number
-    file_aux  = open(experiment_name+'/gen.txt','w')
-    file_aux.write(str(i))
-    file_aux.close()
-
-    # saves file with the best solution
-    np.savetxt(experiment_name+'/best.txt',pop[best])
-
-    # saves simulation state
-    solutions = [pop, fit_pop]
-    env.update_solutions(solutions)
-    env.save_state()
-
-
-
-
-fim = time.time() # prints total execution time for experiment
-print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
-print( '\nExecution time: '+str(round((fim-ini)))+' seconds \n')
-
-
-
-
-env.state_to_log() # checks environment state
-
-    
+run_evolution(10)
