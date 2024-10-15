@@ -30,7 +30,7 @@ def evaluate(env, x):
     return np.array(list(map(lambda y: simulation(env,y), x)))
 
 ini = time.time()  # sets time marker
-run_mode = 'train'
+run_mode = 'test'
 experiment_type = "dynamic"
 headless = True
 if headless:
@@ -165,9 +165,21 @@ def is_most_similar_island(offspring_individual, islands, index):
         np.mean([cosine_similarity(offspring_individual[:n_vars], individual[:n_vars]) for individual in island])
         for island in islands
     ]
-    
     # Check if the similarity of the island at the given index is the maximum
     return avg_similarities[index] == max(avg_similarities)
+
+def similar_island(offspring_individual, islands, probability_threshold=0.8):
+    avg_similarities = [
+        np.mean([cosine_similarity(offspring_individual[:n_vars], individual[:n_vars]) for individual in island])
+        for island in islands
+    ]
+    
+    most_similar_index = np.argmax(avg_similarities)
+    
+    if random.random() < probability_threshold:
+        return most_similar_index
+    else:
+        return random.randint(0, len(islands) - 1)
     
 # calculates the percintile of the of the offspring's fitness in the population 
 def fitness_percentile(fitness, fit_pop):
@@ -440,11 +452,11 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
     offspringepoch = crossover_epoch(combined_pop, combined_fit_pop, 
                                     parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
-
+    offspring_placements = [similar_island(individual, combined_pop, 0.8) for individual in offspringepoch]
     for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
         pop_similars = []
-        for individual in offspringepoch:
-            if is_most_similar_island(individual, combined_pop, i):
+        for idx, individual in enumerate(offspringepoch):
+            if offspring_placements[idx] == i:
                 pop_similars.append(individual)
         print(len(pop_similars))
         if len(pop_similars) != 0:
@@ -457,6 +469,18 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
         
     env_general.save_state()
 
+
+# loads file with the best solution for testing
+if run_mode =='test':
+
+    bsol = np.loadtxt(experiment_name+'/best.txt')
+    print( '\n RUNNING SAVED BEST SOLUTION \n')
+    env_general.update_parameter('speed','normal')
+    env_general.update_parameter('visuals',True)
+    x = evaluate(env_general,[bsol])
+    print(x)
+
+    sys.exit(0)
 
 
 # initializes population loading old solutions or generating new ones
