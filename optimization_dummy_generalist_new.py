@@ -222,7 +222,7 @@ def crossover(pop, fit_pop, parents):
             offspring[f][n_vars] = new_step_size
 
             # mutation using updated step size
-            for i in range(0,len(offspring[f] - num_step_size)):
+            for i in range(0,len(offspring[f]) - num_step_size):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
 
@@ -255,7 +255,7 @@ def crossover_static_mutation(pop, fit_pop, parents):
 
 
             # mutation using updated step size
-            for i in range(0,len(offspring[f] - num_step_size)):
+            for i in range(0,len(offspring[f]) - num_step_size):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, init_step_size)
 
@@ -315,7 +315,7 @@ def crossover_epoch(poplist, fit_poplist, parentslist):
             offspring[f][n_vars] = new_step_size
 
             # mutation using updated step size
-            for i in range(0,len(offspring[f] - num_step_size)):
+            for i in range(0,len(offspring[f]) - num_step_size):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
 
@@ -346,7 +346,7 @@ def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist):
 
 
             # mutation using updated step size
-            for i in range(0,len(offspring[f] - num_step_size)):
+            for i in range(0,len(offspring[f]) - num_step_size):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, init_step_size)
 
@@ -558,7 +558,7 @@ for i in range(ini_g+1, gens):
         pop_specs[k] = pop
         fit_pop_specs[k] = fit_pop
 
-    if i % 3 == 0:
+    if i % 10 == 0:
         evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs)
 
 
