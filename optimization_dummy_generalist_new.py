@@ -113,6 +113,8 @@ def survival_selection(pop, fit_pop, num_selected, epoch=False):
     probs = normalized_fitness / np.sum(normalized_fitness)
     
     best_idx = np.argmax(fit_pop)
+    # print(len(pop))
+    # print(len(fit_pop))
     best_nn = pop[best_idx]
     best_fit = fit_pop[best_idx]
 
@@ -266,24 +268,24 @@ def crossover_static_mutation(pop, fit_pop, parents):
 # weighted average crossover function
 def crossover_epoch(poplist, fit_poplist, parentslist):
     print("Epoch Crossover with dynamic mutation")
+    
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
     
     for p in range(0,len(parentslist[0])):
-
-        # select parents
-        p1 = poplist[0][parentslist[0][p]]
-        p2 = poplist[1][parentslist[1][p]]
-        p3 = poplist[2][parentslist[2][p]]
         
         n_offspring = 1
         offspring =  np.zeros((n_offspring, n_vars + num_step_size))
 
         for f in range(1):
             # get weights for weighted average by using softmax
-            w1, w2, w3 = softmax([fit_poplist[0][parentslist[0][p]], fit_poplist[1][parentslist[1][p]], fit_poplist[2][parentslist[2][p]]])
+            # weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(fit_poplist))])
+            weights = softmax([np.random.uniform(1) for p_idx in range(len(fit_poplist))])
             # cross_prob = np.random.uniform(0,1)
-            offspring[f] = w1 * p1 + p2 * w2 + p3 * w3
+            offspring[f] = np.zeros((n_offspring, n_vars + num_step_size))
+
+            for i, w in enumerate(weights):
+                offspring[f] += w * poplist[i][parentslist[i][p]]
 
             #check if initializing the stepsize randomly affects the performance of the model
 
@@ -329,20 +331,18 @@ def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist):
     total_offspring = np.zeros((0,n_vars + 1))
     
     for p in range(0,len(parentslist[0])):
-
-        # select parents
-        p1 = poplist[0][parentslist[0][p]]
-        p2 = poplist[1][parentslist[1][p]]
-        p3 = poplist[2][parentslist[2][p]]
         
         n_offspring = 1
         offspring =  np.zeros((n_offspring, n_vars + num_step_size))
 
         for f in range(1):
             # get weights for weighted average by using softmax
-            w1, w2, w3 = softmax([fit_poplist[0][parentslist[0][p]], fit_poplist[1][parentslist[1][p]], fit_poplist[2][parentslist[2][p]]])
+            weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(poplist))])
             # cross_prob = np.random.uniform(0,1)
-            offspring[f] = w1 * p1 + p2 * w2 + p3 * w3
+            offspring[f] = np.zeros((n_offspring, n_vars + num_step_size))
+
+            for i, w in enumerate(weights):
+                offspring[f] += w * poplist[i][parentslist[i][p]]
 
 
             # mutation using updated step size
@@ -439,18 +439,19 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
                                     parents) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
 
-    for i, (pop, fit_pop, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
+    for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
         pop_similars = []
         for individual in offspringepoch:
             if is_most_similar_island(individual, combined_pop, i):
                 pop_similars.append(individual)
-        
-        fit_offspringepoch = evaluate(env, offspringepoch)
-        pop_total = np.vstack((pop, pop_similars))
-        fit_pop_total = np.append(fit_pop, fit_offspringepoch)
-        pop_total, fit_pop_total = survival_selection(pop_total, fit_pop_total, npop, True)
-        solutions = [pop_total, fit_pop_total]
-        env.update_solutions(solutions)
+        print(len(pop_similars))
+        if len(pop_similars) != 0:
+            fit_offspringepoch = evaluate(env, pop_similars)
+            pop_total = np.vstack((pop_total, pop_similars))
+            fit_pop_total = np.append(fit_pop_total, fit_offspringepoch)
+            pop_total, fit_pop_total = survival_selection(pop_total, fit_pop_total, npop, True)
+            solutions = [pop_total, fit_pop_total]
+            env.update_solutions(solutions)
         
     env_general.save_state()
 
@@ -475,7 +476,6 @@ std = 0
 print( '\nNEW EVOLUTION\n')
 
 env_gens, env_specs = init_islands()
-print('env specs', env_specs)
 pop_gens = []
 pop_specs = []
 fit_pop_gens = []
@@ -492,7 +492,7 @@ for i, env_gen in enumerate(env_gens):
     fit_pop = evaluate(env_general, pop)
     best_gen.append(np.argmax(fit_pop))
     mean_gen.append(np.mean(fit_pop))
-    std_gen.append(np.mean(fit_pop))
+    std_gen.append(np.std(fit_pop))
     pop_gens.append(pop)
     fit_pop_gens.append(fit_pop)
     solutions = [pop, fit_pop]
@@ -523,17 +523,17 @@ file_aux.close()
 
 for i in range(ini_g+1, gens):
 
-    for i, (pop, fit_pop, env) in enumerate(zip(pop_gens, fit_pop_gens, env_gens)):
+    for j, (pop, fit_pop, env) in enumerate(zip(pop_gens, fit_pop_gens, env_gens)):
         pop, fit_pop, best = evolve_generation(pop, fit_pop, env)
-        best_gen[i] = np.argmax(fit_pop)
-        mean_gen[i] = np.mean(fit_pop)
-        std_gen[i] = np.mean(fit_pop)
-        pop_gens[i] = pop
-        fit_pop_gens[i] = fit_pop
+        best_gen[j] = np.argmax(fit_pop)
+        mean_gen[j] = np.mean(fit_pop)
+        std_gen[j] = np.std(fit_pop)
+        pop_gens[j] = pop
+        fit_pop_gens[j] = fit_pop
 
 
 
-    best_gen_idx = np.argmax([fit_pop_gen[best_gen[i]] for i, fit_pop_gen in enumerate(fit_pop_gens)])
+    best_gen_idx = np.argmax([fit_pop_gen[best_gen[k]] for k, fit_pop_gen in enumerate(fit_pop_gens)])
     best = best_gen[best_gen_idx]
     mean = mean_gen[best_gen_idx]
     std = std_gen[best_gen_idx]
@@ -553,12 +553,12 @@ for i in range(ini_g+1, gens):
     # saves file with the best solution
     np.savetxt(experiment_name+'/best.txt',pop_gens[best_gen_idx][best])
 
-    for pop, fit_pop, env in zip(pop_specs, fit_pop_specs, env_specs):
+    for k, (pop, fit_pop, env) in enumerate(zip(pop_specs, fit_pop_specs, env_specs)):
         pop, fit_pop, best = evolve_generation(pop, fit_pop, env)
-        pop_specs[i] = pop
-        fit_pop_specs[i] = fit_pop
+        pop_specs[k] = pop
+        fit_pop_specs[k] = fit_pop
 
-    if i % 10 == 0:
+    if i % 3 == 0:
         evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs)
 
 
