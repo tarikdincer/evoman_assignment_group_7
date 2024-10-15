@@ -203,7 +203,7 @@ def crossover(pop, fit_pop, parents):
             offspring[f][n_vars] = new_step_size
 
             # mutation using updated step size
-            for i in range(0,len(offspring[f]) - num_step_size):
+            for i in range(0,len(offspring[f])  - num_step_size):
                 if np.random.uniform(0 ,1)<=mutation:
                     offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
 
