@@ -45,19 +45,21 @@ n_hidden_neurons = 10
 
 # For testing 1 generalist island and 2 specialist islands. Will be changed later
 # initializes simulation in individual evolution mode, for single static enemy.
-env_general = Environment(experiment_name=experiment_name,
-                enemies=[3,5,8],
-                multiplemode="yes",
-                playermode="ai",
-                player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
-                enemymode="static",
-                level=2,
-                speed="fastest",
-                visuals=False)
+# env_general = Environment(experiment_name=experiment_name,
+#                 enemies=[3,5,8],
+#                 multiplemode="yes",
+#                 playermode="ai",
+#                 player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
+#                 enemymode="static",
+#                 level=2,
+#                 speed="fastest",
+#                 visuals=False)
 
-islands = [{'env': 'generalist', 'enemies': [3, 5, 8]},
-         {'env': 'specialist', 'enemies': [1]},
-         {'env': 'specialist', 'enemies': [7]}]
+islands = [{'env': 'generalist', 'enemies': [3,5,7,8]},
+         {'env': 'specialist', 'enemies': [3]},
+         {'env': 'specialist', 'enemies': [5]},
+         {'env': 'specialist', 'enemies': [7]},
+         {'env': 'specialist', 'enemies': [8]}]
 
 # number of weights for multilayer with 10 hidden neurons
 num_sensors = 20
@@ -174,7 +176,7 @@ def fitness_percentile(fitness, fit_pop):
     return offspring_fitness_percentile
 
 # weighted average crossover function
-def crossover(pop, fit_pop, parents):
+def crossover(pop, fit_pop, parents, environment):
     print("Crossover with dynamic mutation")
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
@@ -197,7 +199,7 @@ def crossover(pop, fit_pop, parents):
             #check if initializing the stepsize randomly affects the performance of the model
 
             # calculate the fitness of the offspring and compute it's percentile in the population
-            offspring_fitness = simulation(env_general, offspring[f])
+            offspring_fitness = simulation(environment, offspring[f])
             percentile = fitness_percentile(offspring_fitness, fit_pop)
 
             # obtain the current step_size from the offspring 
@@ -266,7 +268,7 @@ def crossover_static_mutation(pop, fit_pop, parents):
     return total_offspring
 
 # weighted average crossover function
-def crossover_epoch(poplist, fit_poplist, parentslist):
+def crossover_epoch(poplist, fit_poplist, parentslist, environment):
     print("Epoch Crossover with dynamic mutation")
     
     # initialize output array 
@@ -290,7 +292,7 @@ def crossover_epoch(poplist, fit_poplist, parentslist):
             #check if initializing the stepsize randomly affects the performance of the model
 
             # calculate the fitness of the offspring and compute it's percentile in the population
-            offspring_fitness = simulation(env_general, offspring[f])
+            offspring_fitness = simulation(environment, offspring[f])
             percentile = fitness_percentile(offspring_fitness, fit_poplist[0])
 
             # obtain the current step_size from the offspring 
@@ -389,7 +391,7 @@ def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
 def evolve_generation(pop, fit_pop, env):
     parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
     random.shuffle(parents)
-    offspring = crossover(pop, fit_pop, parents) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents) # crossover
+    offspring = crossover(pop, fit_pop, parents, env) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents) # crossover
     fit_offspring = evaluate(env, offspring)   # evaluation
     pop = np.vstack((pop,offspring))
     fit_pop = np.append(fit_pop,fit_offspring)
@@ -405,7 +407,7 @@ def evolve_generation(pop, fit_pop, env):
     return pop, fit_pop, best
 
 def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs, parent_ratio = 0.5):
-    nparents = min([pop.shape[0] // (1/parent_ratio) for pop in pop_specs + pop_gens])
+    nparents = 20 #min([pop.shape[0] // (1/parent_ratio) for pop in pop_specs + pop_gens])
     parents = []
     for i, pop in enumerate(pop_specs):
         pop_parents = truncation_random_hybrid_selection(pop, fit_pop_specs[i], nparents, ratio)
@@ -436,7 +438,7 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
         combined_env.append(env)
     
     offspringepoch = crossover_epoch(combined_pop, combined_fit_pop, 
-                                    parents) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
+                                    parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
 
     for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
@@ -456,16 +458,6 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
     env_general.save_state()
 
 
-# loads file with the best solution for testing
-if run_mode =='test':
-
-    bsol = np.loadtxt(experiment_name+'/best.txt')
-    print( '\n RUNNING SAVED BEST SOLUTION \n')
-    env_general.update_parameter('speed','normal')
-    evaluate([bsol])
-
-    sys.exit(0)
-
 
 # initializes population loading old solutions or generating new ones
 best = 0
@@ -476,6 +468,7 @@ std = 0
 print( '\nNEW EVOLUTION\n')
 
 env_gens, env_specs = init_islands()
+env_general = env_gens[0] # Hardcoded for now.
 pop_gens = []
 pop_specs = []
 fit_pop_gens = []
@@ -485,11 +478,21 @@ mean_gen = []
 std_gen = []
 ini_g = 0
 
+# loads file with the best solution for testing
+if run_mode =='test':
+
+    bsol = np.loadtxt(experiment_name+'/best.txt')
+    print( '\n RUNNING SAVED BEST SOLUTION \n')
+    env_general.update_parameter('speed','normal')
+    evaluate([bsol])
+
+    sys.exit(0)
+
 for i, env_gen in enumerate(env_gens):
     print(f'Initializing the {i + 1}. generalist population\n')
     pop = np.random.uniform(dom_l, dom_u, (npop, n_vars))
     pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
-    fit_pop = evaluate(env_general, pop)
+    fit_pop = evaluate(env_gen, pop)
     best_gen.append(np.argmax(fit_pop))
     mean_gen.append(np.mean(fit_pop))
     std_gen.append(np.std(fit_pop))
