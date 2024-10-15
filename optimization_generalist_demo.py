@@ -210,7 +210,7 @@ else:
 
 
 # saves results for first pop
-file_aux  = open(experiment_name+'/results.txt','a')
+file_aux = open(experiment_name+'/results.txt','a')
 file_aux.write('\n\ngen best mean std')
 print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
 file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )

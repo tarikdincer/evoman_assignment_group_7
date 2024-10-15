@@ -61,33 +61,25 @@ n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5
 ratio = 0.33
 dom_u = 1
 dom_l = -1
-npop = 50
-gens = 25
+npop = 100
+gens = 200
 mutation = 0.2
 num_step_size = 1
 learning_rate = 1/sqrt(n_vars)
-init_step_size = 0.05
+init_step_size = 0.25
 u_boundary_step_size = 1
 l_boundary_step_size = 0
 l_percentile_guided = 25
 u_percentile_guided = 75
-guided_influence = 0.1
+guided_influence = 0.2
 
 # start writing your own code from here
 def survival_selection(pop, fit_pop, num_selected):
     min_fitness = np.min(fit_pop)
-    # # shifting the fitness values to make sure it contains no negative
-    # if min_fitness < 0:
-    #     fit_pop = fit_pop - min_fitness
-    normalized_fitness = fit_pop
-    if min_fitness < 0:
-        normalized_fitness = fit_pop - min_fitness
-        
+    fitness_shifted = fit_pop - min_fitness + 1e-6
+    fitness_scaled = fitness_shifted / np.max(fitness_shifted)
     
-    probs = normalized_fitness / np.sum(normalized_fitness)
-
-    probs = np.maximum(probs, 0.01)
-    probs = probs / np.sum(probs)
+    probs = softmax(fitness_scaled)
     
     best_idx = np.argmax(fit_pop)
     best_nn = pop[best_idx]
@@ -116,6 +108,10 @@ def boundaries_step_size(x):
         return l_boundary_step_size
     else:
         return x
+
+def softmax(x):
+        exp_x = np.exp(x - np.max(x))
+        return exp_x / np.sum(exp_x)
 
 # limits
 def limits(x):
@@ -149,7 +145,6 @@ def crossover(pop, fit_pop, parents):
         n_offspring = 1
         offspring =  np.zeros((n_offspring, n_vars + num_step_size))
 
-        # TODO: add mutation
         for f in range(1):
             # get weights for weighted average by using softmax
             w1, w2 = softmax([fit_pop[parents[p]], fit_pop[parents[p+1]]])
@@ -262,77 +257,100 @@ def test_solution(alg_idx, run_idx):
 
     return x
 
-def plot_fitness(static_mean_avg, static_best_avg,
-                 dynamic_mean_avg, dynamic_best_avg, enemy):
+def plot_fitness_std(static_mean_avg, static_best_avg,
+                 dynamic_mean_avg, dynamic_best_avg, static_mean_std, dynamic_mean_std, static_best_std, dynamic_best_std, static_mean_std_gen, dynamic_mean_std_gen, enemy):
     
     generations = np.arange(1, gens + 1)
     
     plt.figure(figsize=(10, 6))
     
-    plt.plot(generations, static_mean_avg, label='Static Mutation - Mean Fitness', 
-                  color='red', linestyle='-')
-    plt.plot(generations, static_best_avg, label='Static Mutation - Best Fitness', 
-                  color='red', linestyle='--')
-    plt.plot(generations, dynamic_mean_avg, label='Dynamic Mutation - Mean Fitness', 
-                  color='blue', linestyle='-')
-    plt.plot(generations, dynamic_best_avg, label='Dynamic Mutation - Best Fitness', 
-                  color='blue', linestyle='--')
+    plt.plot(generations, static_mean_avg, label='Static Mutation - Mean Fitness', color='blue', linestyle='-')
+    plt.fill_between(generations, static_mean_avg - static_mean_std, static_mean_avg + static_mean_std, 
+                    color='blue', alpha=0.2)
 
-    plt.title(f'Fitness Progression for Static and Dynamic Mutation for Enemy {enemy}')
+    plt.plot(generations, static_best_avg, label='Static Mutation - Best Fitness', color='blue', linestyle='--')
+    plt.fill_between(generations, static_best_avg - static_best_std, static_best_avg + static_best_std, 
+                    color='blue', alpha=0.2)
+    
+    plt.plot(generations, static_mean_std_gen, label='Static Mutation - Standart Deviation', color='blue', linestyle='-.')
+
+    plt.plot(generations, dynamic_mean_avg, label='Adaptive Mutation - Mean Fitness', color='red', linestyle='-')
+    plt.fill_between(generations, dynamic_mean_avg - dynamic_mean_std, dynamic_mean_avg + dynamic_mean_std, 
+                    color='red', alpha=0.2)
+
+    plt.plot(generations, dynamic_best_avg, label='Adaptive Mutation - Best Fitness', color='red', linestyle='--')
+    plt.fill_between(generations, dynamic_best_avg - dynamic_best_std, dynamic_best_avg + dynamic_best_std, 
+                    color='red', alpha=0.2)
+    
+    plt.plot(generations, dynamic_mean_std_gen, label='Adaptive Mutation - Standart Deviation', color='red', linestyle='-.')
+
+    plt.title(f'Fitness and Std Progression for Static and Adaptive Mutation for Enemy {enemy}')
     plt.xlabel('Generations')
-    plt.ylabel('Fitness')
+    plt.ylabel('Fitness and Std')
     plt.legend()
     plt.grid(True)
     plt.show()
 
-def plot_std(static_mean_std, static_best_std,
-                 dynamic_mean_std, dynamic_best_std, enemy):
-    
-    generations = np.arange(1, gens + 1)
-    
-    plt.figure(figsize=(10, 6))
-    
-    plt.plot(generations, static_mean_std, label='Static Mutation - Mean Std', 
-                  color='red', linestyle='-')
-    plt.plot(generations, static_best_std, label='Static Mutation - Best Std', 
-                  color='red', linestyle='--')
-    plt.plot(generations, dynamic_mean_std, label='Dynamic Mutation - Mean Std', 
-                  color='blue', linestyle='-')
-    plt.plot(generations, dynamic_best_std, label='Dynamic Mutation - Best Std', 
-                  color='blue', linestyle='--')
-
-    plt.title(f'Standart Deviation Progression for Static and Dynamic Mutation for Enemy {enemy}')
-    plt.xlabel('Generations')
-    plt.ylabel('Standart Deviation')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 
 def calculate_avg_std(stats, n_runs, n_gens):
     mean_fit_avg = np.zeros(n_gens)
     mean_fit_std = np.zeros(n_gens)
     best_fit_avg = np.zeros(n_gens)
     best_fit_std = np.zeros(n_gens)
+    mean_std_avg = np.zeros(n_gens)
 
     for gen in range(n_gens):
         mean_fit_gen = [stats[run][gen]['mean'] for run in range(n_runs)]
         best_fit_gen = [stats[run][gen]['best_fit'] for run in range(n_runs)]
+        mean_std_gen = [stats[run][gen]['std'] for run in range(n_runs)]
 
         mean_fit_avg[gen] = np.mean(mean_fit_gen)
         mean_fit_std[gen] = np.std(mean_fit_gen)
         best_fit_avg[gen] = np.mean(best_fit_gen)
         best_fit_std[gen] = np.std(best_fit_gen)
+        mean_std_avg[gen] = np.mean(mean_std_gen)
 
-    return mean_fit_avg, mean_fit_std, best_fit_avg, best_fit_std
+    return mean_fit_avg, mean_fit_std, best_fit_avg, best_fit_std, mean_std_avg
+
+def plot_boxplots(static_means, dynamic_means, enemies):
+    plt.figure(figsize=(12, 6))
+    data = []
+    labels = []
+    for i, enemy in enumerate(enemies):
+        data.append(static_means[i])
+        labels.append(f'Static (Enemy {enemy})')
+        data.append(dynamic_means[i])
+        labels.append(f'Adaptive (Enemy {enemy})')
+
+    plt.boxplot(data, labels=labels, patch_artist=True)
+
+    plt.title('Static Non Uniform vs Adaptive Fitness Based Mutation for Different Enemies')
+    plt.ylabel('Mean Best Fitness')
+    plt.grid(True)
+    plt.show()
 
 def run_evolution(n_runs):
-    static_stats = []
-    dynamic_stats = []
+    r_static_test_stats = []
+    r_dynamic_test_stats = []
+    static_test_stats = []
+    dynamic_test_stats = []
     enemy_set = [3, 5, 8]
-    for en in enemy_set:
+    for idx, en in enumerate(enemy_set):
+        static_stats = []
+        dynamic_stats = []
+        r_dynamic_test_stats.append([])
+        r_static_test_stats.append([])
+        dynamic_test_stats.append([])
+        static_test_stats.append([])
         env.update_parameter('enemies',[en])
         for n_alg in range(2):
             experiment_type = "static" if n_alg == 0 else "dynamic"
+            # if experiment_type == "static":
+            #     static_test_stats.append([])
+            # else:
+            #     dynamic_test_stats.append([])
+            best_sol = []
+            best_fit = 0
             for n_run in range(n_runs):
                 print(f'Running {n_run + 1}. run with {experiment_type} mutation')
                 print( '\nNEW EVOLUTION\n')
@@ -341,6 +359,8 @@ def run_evolution(n_runs):
                 pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
                 fit_pop = evaluate(env, pop) #returns an array that stores the fitness of each nn
                 best = np.argmax(fit_pop)
+                best_sol = pop[best]
+                best_fit = fit_pop[best]
                 mean = np.mean(fit_pop)
                 std = np.std(fit_pop)
                 ini_g = 0
@@ -376,18 +396,18 @@ def run_evolution(n_runs):
                     pop = np.vstack((pop,offspring))
                     fit_pop = np.append(fit_pop,fit_offspring)
 
-                    best = np.argmax(fit_pop) #best solution in generation
-                    fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
-                    best_sol = fit_pop[best]
-
+                    #best = np.argmax(fit_pop) #best solution in generation
+                    
                     pop, fit_pop = survival_selection(pop, fit_pop, npop)
 
                     best = np.argmax(fit_pop)
+                    fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
+
                     std  =  np.std(fit_pop)
                     mean = np.mean(fit_pop)
                     end = round(time.time() * 1000)
 
-                    generation_stats = {"mean": mean, "best": best, "std": std, "best_fit": fit_pop[best], "best": pop[best], "time": round((end-ini))}
+                    generation_stats = {"mean": mean, "std": std, "best_fit": fit_pop[best], "best": pop[best], "time": round((end-ini))}
                     
                     if experiment_type == 'static':
                         static_stats[n_run].append(generation_stats)
@@ -413,7 +433,28 @@ def run_evolution(n_runs):
                     solutions = [pop, fit_pop]
                     env.update_solutions(solutions)
                     env.save_state()
-                
+                if fit_pop[best] > best_fit:
+                    best_sol = pop[best]
+                    best_fit = fit_pop[best]
+
+            for i in range(5):
+                env.update_parameter('randomini','yes')
+                f, p, e, t = env.play(pcont=best_sol)
+                if experiment_type == "static":
+                    r_static_test_stats[idx].append(p - e)
+                else:
+                    r_dynamic_test_stats[idx].append(p - e)
+            
+            for i in range(5):
+                env.update_parameter('randomini','no')
+                f, p, e, t = env.play(pcont=best_sol)
+                if experiment_type == "static":
+                    static_test_stats[idx].append(p - e)
+                else:
+                    dynamic_test_stats[idx].append(p - e)
+            
+            env.update_parameter('randomini','no')
+        
         for idx, stat in enumerate(static_stats):
             for gen_idx, gen in enumerate(stat):
                 print(f"Static {idx + 1}. run {gen_idx + 1}. generation results: Mean:{stat[gen_idx]["mean"]} Std:{stat[gen_idx]["std"]} Best Fitness:{stat[gen_idx]["best_fit"]} Time:{stat[gen_idx]["time"]}")
@@ -421,13 +462,15 @@ def run_evolution(n_runs):
             for gen_idx, gen in enumerate(stat):
                 print(f"Dynamic {idx + 1}. run {gen_idx + 1}. generation results: Mean:{stat[gen_idx]["mean"]} Std:{stat[gen_idx]["std"]} Best Fitness:{stat[gen_idx]["best_fit"]} Time:{stat[gen_idx]["time"]}")
         
-        static_mean_avg, static_mean_std, static_best_avg, static_best_std = calculate_avg_std(static_stats, n_runs, gens)
-        dynamic_mean_avg, dynamic_mean_std, dynamic_best_avg, dynamic_best_std = calculate_avg_std(dynamic_stats, n_runs, gens)    
+        static_mean_avg, static_mean_std, static_best_avg, static_best_std, static_mean_std_gen = calculate_avg_std(static_stats, n_runs, gens)
+        dynamic_mean_avg, dynamic_mean_std, dynamic_best_avg, dynamic_best_std, dynamic_mean_std_gen = calculate_avg_std(dynamic_stats, n_runs, gens)    
 
-        plot_fitness(static_mean_avg, static_best_avg,
-             dynamic_mean_avg, dynamic_best_avg, en)
-        plot_std(static_mean_std, static_best_std,
-             dynamic_mean_std, dynamic_best_std, en)
+        plot_fitness_std(static_mean_avg, static_best_avg,
+             dynamic_mean_avg, dynamic_best_avg, static_mean_std, dynamic_mean_std, static_best_std, dynamic_best_std, static_mean_std_gen, dynamic_mean_std_gen, en)
+        print(static_test_stats)
+        print(dynamic_test_stats)
+    plot_boxplots(static_test_stats, dynamic_test_stats, enemy_set)
+    plot_boxplots(r_static_test_stats, r_dynamic_test_stats, enemy_set)
     
 
 run_evolution(10)
