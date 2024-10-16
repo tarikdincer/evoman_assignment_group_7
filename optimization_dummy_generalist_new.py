@@ -31,7 +31,7 @@ def evaluate(env, x):
 
 ini = time.time()  # sets time marker
 run_mode = 'test'
-experiment_type = "dynamic"
+experiment_type = "static"
 headless = True
 if headless:
     os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -45,15 +45,15 @@ n_hidden_neurons = 10
 
 # For testing 1 generalist island and 2 specialist islands. Will be changed later
 # initializes simulation in individual evolution mode, for single static enemy.
-# env_general = Environment(experiment_name=experiment_name,
-#                 enemies=[3,5,8],
-#                 multiplemode="yes",
-#                 playermode="ai",
-#                 player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
-#                 enemymode="static",
-#                 level=2,
-#                 speed="fastest",
-#                 visuals=False)
+env_general = Environment(experiment_name=experiment_name,
+                enemies=[3,5,8],
+                multiplemode="yes",
+                playermode="ai",
+                player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
+                enemymode="static",
+                level=2,
+                speed="fastest",
+                visuals=False)
 
 islands = [{'env': 'generalist', 'enemies': [3,5,7,8]},
          {'env': 'specialist', 'enemies': [3]},
@@ -168,7 +168,7 @@ def is_most_similar_island(offspring_individual, islands, index):
     # Check if the similarity of the island at the given index is the maximum
     return avg_similarities[index] == max(avg_similarities)
 
-def similar_island(offspring_individual, islands, probability_threshold=0.8):
+def similar_island(offspring_individual, islands, probability_threshold=0): # currently uses random offspring placement
     avg_similarities = [
         np.mean([cosine_similarity(offspring_individual[:n_vars], individual[:n_vars]) for individual in island])
         for island in islands
@@ -180,7 +180,7 @@ def similar_island(offspring_individual, islands, probability_threshold=0.8):
         return most_similar_index
     else:
         return random.randint(0, len(islands) - 1)
-    
+
 # calculates the percintile of the of the offspring's fitness in the population 
 def fitness_percentile(fitness, fit_pop):
     offspring_fitness_percentile = percentileofscore(fit_pop, fitness)
@@ -189,7 +189,8 @@ def fitness_percentile(fitness, fit_pop):
 
 # weighted average crossover function
 def crossover(pop, fit_pop, parents, environment):
-    print("Crossover with dynamic mutation")
+    #print("Crossover with dynamic mutation")
+
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
     
@@ -248,7 +249,8 @@ def crossover(pop, fit_pop, parents, environment):
 
 # weighted average crossover function with static mutation
 def crossover_static_mutation(pop, fit_pop, parents):
-    print("Crossover with static mutation")
+    #print("Crossover with static mutation")
+
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
     
@@ -285,7 +287,7 @@ def crossover_epoch(poplist, fit_poplist, parentslist, environment):
     
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
-    
+
     for p in range(0,len(parentslist[0])):
         
         n_offspring = 1
@@ -339,7 +341,7 @@ def crossover_epoch(poplist, fit_poplist, parentslist, environment):
 
     return total_offspring
 
-def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist):
+def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist, weighted=False):
     print("Epoch Crossover with static mutation")
     # initialize output array 
     total_offspring = np.zeros((0,n_vars + 1))
@@ -351,13 +353,17 @@ def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist):
 
         for f in range(1):
             # get weights for weighted average by using softmax
-            weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(poplist))])
+            if weighted:
+                weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(poplist))])
+            # simply average withouts weights - should improve impact of individuals from tough islands
+            else:
+                weights = [1/len(poplist)] * len(poplist)
+
             # cross_prob = np.random.uniform(0,1)
             offspring[f] = np.zeros((n_offspring, n_vars + num_step_size))
 
             for i, w in enumerate(weights):
                 offspring[f] += w * poplist[i][parentslist[i][p]]
-
 
             # mutation using updated step size
             for i in range(0,len(offspring[f]) - num_step_size):
@@ -418,7 +424,7 @@ def evolve_generation(pop, fit_pop, env):
 
     return pop, fit_pop, best
 
-def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs, parent_ratio = 0.5):
+def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs, ratio = 0.8):
     nparents = 20 #min([pop.shape[0] // (1/parent_ratio) for pop in pop_specs + pop_gens])
     parents = []
     for i, pop in enumerate(pop_specs):
@@ -429,26 +435,12 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
     for i, pop in enumerate(pop_gens):
         pop_parents = truncation_random_hybrid_selection(pop, fit_pop_gens[i], nparents, ratio)
         random.shuffle(pop_parents)
-        parents.append(pop_parents)
+        parents.append(pop_parents)    
     
-    combined_pop = []
-    for pop in pop_gens:
-        combined_pop.append(pop)
-    for pop in pop_specs:
-        combined_pop.append(pop)
-
-    combined_fit_pop = []
-    for pop in fit_pop_gens:
-        combined_fit_pop.append(pop)
-    for pop in fit_pop_specs:
-        combined_fit_pop.append(pop)
-
-    combined_env = []
-    for env in env_gens:
-        combined_env.append(env)
-    for env in env_specs:
-        combined_env.append(env)
-    
+    combined_pop = pop_gens + pop_specs
+    combined_fit_pop = fit_pop_gens + fit_pop_specs
+    combined_env = env_gens + env_specs
+   
     offspringepoch = crossover_epoch(combined_pop, combined_fit_pop, 
                                     parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
@@ -458,7 +450,6 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
         for idx, individual in enumerate(offspringepoch):
             if offspring_placements[idx] == i:
                 pop_similars.append(individual)
-        print(len(pop_similars))
         if len(pop_similars) != 0:
             fit_offspringepoch = evaluate(env, pop_similars)
             pop_total = np.vstack((pop_total, pop_similars))
