@@ -45,15 +45,17 @@ n_hidden_neurons = 10
 
 # For testing 1 generalist island and 2 specialist islands. Will be changed later
 # initializes simulation in individual evolution mode, for single static enemy.
-env_general = Environment(experiment_name=experiment_name,
-                enemies=[3,5,8],
-                multiplemode="yes",
-                playermode="ai",
-                player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
-                enemymode="static",
-                level=2,
-                speed="fastest",
-                visuals=False)
+
+# Please keep this commented out, otherwise it just causes confusion
+# env_general = Environment(experiment_name=experiment_name,
+#                 enemies=[3,5,8],
+#                 multiplemode="yes",
+#                 playermode="ai",
+#                 player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
+#                 enemymode="static",
+#                 level=2,
+#                 speed="fastest",
+#                 visuals=False)
 
 islands = [{'env': 'generalist', 'enemies': [3,5,7,8]},
          {'env': 'specialist', 'enemies': [3]},
@@ -69,7 +71,7 @@ ratio = 0.33
 dom_u = 1
 dom_l = -1
 npop = 100
-gens = 100
+gens = 15
 mutation = 0.2
 num_step_size = 1
 learning_rate = 1/sqrt(n_vars)
@@ -559,13 +561,25 @@ for i in range(ini_g+1, gens):
         pop_gens[j] = pop
         fit_pop_gens[j] = fit_pop
 
-
+    for k, (pop, fit_pop, env) in enumerate(zip(pop_specs, fit_pop_specs, env_specs)):
+        pop, fit_pop, _ = evolve_generation(pop, fit_pop, env)
+        pop_specs[k] = pop
+        fit_pop_specs[k] = fit_pop
 
     best_gen_idx = np.argmax([fit_pop_gen[best_gen[k]] for k, fit_pop_gen in enumerate(fit_pop_gens)])
     best = best_gen[best_gen_idx]
     mean = mean_gen[best_gen_idx]
     std = std_gen[best_gen_idx]
 
+    if i == gens - 1:
+        for l, (pop, fit_pop) in enumerate(zip(pop_specs, fit_pop_specs)):
+            fit_pop = evaluate(env_gens[0], pop)
+            best_ind = np.argmax(fit_pop)
+            pop_gens.append(pop)
+            fit_pop_gens.append(fit_pop)
+            best_gen.append(best_ind)
+        best_gen_idx = np.argmax([fit_pop_gen[best_gen[k]] for k, fit_pop_gen in enumerate(fit_pop_gens)])
+        best = best_gen[best_gen_idx]
 
     # saves results
     file_aux  = open(experiment_name+'/results.txt','a')
@@ -580,11 +594,6 @@ for i in range(ini_g+1, gens):
 
     # saves file with the best solution
     np.savetxt(experiment_name+'/best.txt',pop_gens[best_gen_idx][best])
-
-    for k, (pop, fit_pop, env) in enumerate(zip(pop_specs, fit_pop_specs, env_specs)):
-        pop, fit_pop, best = evolve_generation(pop, fit_pop, env)
-        pop_specs[k] = pop
-        fit_pop_specs[k] = fit_pop
 
     if i % 10 == 0:
         evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs)
