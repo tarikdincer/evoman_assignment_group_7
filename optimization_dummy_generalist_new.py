@@ -30,7 +30,7 @@ def evaluate(env, x):
     return np.array(list(map(lambda y: simulation(env,y), x)))
 
 ini = time.time()  # sets time marker
-run_mode = 'test'
+run_mode = 'train'
 experiment_type = "static"
 headless = True
 if headless:
@@ -169,18 +169,18 @@ def is_most_similar_island(offspring_individual, islands, index):
     return avg_similarities[index] == max(avg_similarities)
 
 def similar_island(offspring_individual, islands, probability_threshold=0): # currently uses random offspring placement
+    if random.random() >= probability_threshold:
+        return random.randint(0, len(islands) - 1)
+
     avg_similarities = [
         np.mean([cosine_similarity(offspring_individual[:n_vars], individual[:n_vars]) for individual in island])
         for island in islands
     ]
     
     most_similar_index = np.argmax(avg_similarities)
+    return most_similar_index
     
-    if random.random() < probability_threshold:
-        return most_similar_index
-    else:
-        return random.randint(0, len(islands) - 1)
-
+    
 # calculates the percintile of the of the offspring's fitness in the population 
 def fitness_percentile(fitness, fit_pop):
     offspring_fitness_percentile = percentileofscore(fit_pop, fitness)
