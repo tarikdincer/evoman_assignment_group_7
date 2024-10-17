@@ -30,7 +30,7 @@ def evaluate(env, x):
     return np.array(list(map(lambda y: simulation(env,y), x)))
 
 ini = time.time()  # sets time marker
-run_mode = 'test'
+run_mode = 'train'
 experiment_type = "static"
 headless = True
 if headless:
@@ -81,6 +81,7 @@ l_boundary_step_size = 0
 l_percentile_guided = 25
 u_percentile_guided = 75
 guided_influence = 0.1
+similar_migration = True
 
 # start writing your own code from here
 def init_islands():
@@ -170,7 +171,7 @@ def is_most_similar_island(offspring_individual, islands, index):
     # Check if the similarity of the island at the given index is the maximum
     return avg_similarities[index] == max(avg_similarities)
 
-def similar_island(offspring_individual, islands, probability_threshold=0): # currently uses random offspring placement
+def similar_island(offspring_individual, islands, probability_threshold=0): # currently uses random offspring placement by default
     if random.random() >= probability_threshold:
         return random.randint(0, len(islands) - 1)
 
@@ -456,7 +457,8 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
                                     parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
     #offspring_placements = [similar_island(individual, combined_pop, 0.8) for individual in offspringepoch]
-    offspring_placements = [least_similar_island(individual, combined_pop) for individual in offspringepoch]
+    offspring_placements = offspring_placements = [similar_island(individual, combined_pop) if similar_migration else least_similar_island(individual, combined_pop) for individual in offspringepoch]
+
     for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
         pop_similars = []
         for idx, individual in enumerate(offspringepoch):
