@@ -30,7 +30,7 @@ def evaluate(env, x):
     return np.array(list(map(lambda y: simulation(env,y), x)))
 
 ini = time.time()  # sets time marker
-run_mode = 'train'
+run_mode = 'test'
 experiment_type = "static"
 headless = True
 if headless:
@@ -180,7 +180,16 @@ def similar_island(offspring_individual, islands, probability_threshold=0): # cu
     most_similar_index = np.argmax(avg_similarities)
     return most_similar_index
     
-    
+def least_similar_island(offspring_individual, islands):    
+    avg_similarities = [
+        np.mean([cosine_similarity(offspring_individual[:n_vars], individual[:n_vars]) for individual in island])
+        for island in islands
+    ]
+    probs = softmax(avg_similarities)
+    probs = [1 - p for p in probs]
+    probs /= sum(probs)
+    return np.random.choice(range(len(probs)), p=probs)
+
 # calculates the percintile of the of the offspring's fitness in the population 
 def fitness_percentile(fitness, fit_pop):
     offspring_fitness_percentile = percentileofscore(fit_pop, fitness)
@@ -444,7 +453,8 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
     offspringepoch = crossover_epoch(combined_pop, combined_fit_pop, 
                                     parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
                                     combined_pop, combined_fit_pop, parents)
-    offspring_placements = [similar_island(individual, combined_pop, 0.8) for individual in offspringepoch]
+    #offspring_placements = [similar_island(individual, combined_pop, 0.8) for individual in offspringepoch]
+    offspring_placements = [least_similar_island(individual, combined_pop) for individual in offspringepoch]
     for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
         pop_similars = []
         for idx, individual in enumerate(offspringepoch):
