@@ -58,6 +58,7 @@ n_hidden_neurons = 10
 #                 visuals=False)
 
 islands = [{'env': 'generalist', 'enemies': [3,5,7,8]},
+         {'env': 'generalist', 'enemies': [3,5,7,8]},
          {'env': 'specialist', 'enemies': [3]},
          {'env': 'specialist', 'enemies': [5]},
          {'env': 'specialist', 'enemies': [7]},
@@ -71,7 +72,7 @@ ratio = 0.33
 dom_u = 1
 dom_l = -1
 npop = 100
-gens = 15
+gens = 100
 mutation = 0.2
 num_step_size = 1
 learning_rate = 1/sqrt(n_vars)
@@ -82,6 +83,12 @@ l_percentile_guided = 25
 u_percentile_guided = 75
 guided_influence = 0.1
 similar_migration = True
+epoch_number = 0 
+epoch_frequency = 20
+start_val_gen_ratio = 0.2
+end_val_gen_ratio = 0.5
+
+total_epochs = gens / epoch_frequency
 
 # start writing your own code from here
 def init_islands():
@@ -193,6 +200,9 @@ def least_similar_island(offspring_individual, islands):
     probs /= sum(probs)
     return np.random.choice(range(len(probs)), p=probs)
 
+def offspring_gen_placement(num_gen_islands, offspringepoch_gen):
+    return [random.randint(0, (num_gen_islands - 1)) for gen_offspring in range(len(offspringepoch_gen))]
+
 # calculates the percintile of the of the offspring's fitness in the population 
 def fitness_percentile(fitness, fit_pop):
     offspring_fitness_percentile = percentileofscore(fit_pop, fitness)
@@ -293,100 +303,172 @@ def crossover_static_mutation(pop, fit_pop, parents):
 
     return total_offspring
 
+
+def self_adaptive_fitness_based_step_size_mutation(offspring, fit_poplist, environment):
+        # calculate the fitness of the offspring and compute it's percentile in the population
+    offspring_fitness = simulation(environment, offspring)
+    percentile = fitness_percentile(offspring_fitness, fit_poplist[0])
+
+    # obtain the current step_size from the offspring 
+    step_size = offspring[n_vars]
+    
+    new_step_size = 0
+
+    # update the stepsize for adaptive step-size but also take the fitness of the offspring into account by adjusting the mean of the normal distribution
+    # if the offspring is below a certain percentile in the population mean is increased such that the stepsize on average slightly increases and conversely
+    # if the offspring is above a certain percentile decrease the mean slightly to decrease the stepsize
+    if percentile < l_percentile_guided:
+        new_step_size = step_size * exp(learning_rate * np.random.normal(guided_influence, 1))
+    elif percentile > u_percentile_guided:
+        new_step_size = step_size * exp(learning_rate * np.random.normal( - guided_influence, 1))
+    else:
+        new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1))
+
+    # ensures step size stays within boundaries
+    new_step_size = boundaries_step_size(new_step_size)
+
+    # set the new stepsize for the offspring
+    offspring[n_vars] = new_step_size
+
+    # mutation using updated step size
+    for i in range(0,len(offspring) - num_step_size):
+        if np.random.uniform(0 ,1)<=mutation:
+            offspring[i] =   offspring[i]+np.random.normal(0, new_step_size)
+
+    offspring = np.array(list(map(lambda y: limits(y), offspring)))
+    
+    return offspring
+
 # weighted average crossover function
-def crossover_epoch(poplist, fit_poplist, parentslist, environment):
+def crossover_epoch(poplist, fit_poplist, parentslist, environment, num_gen_islands, generalist_ratio):
     print("Epoch Crossover with dynamic mutation")
     
-    # initialize output array 
-    total_offspring = np.zeros((0,n_vars + 1))
+    # initialize output array for the offspring with certain ratio of the generalist parent.
+    total_offspring_gen = np.zeros((0,n_vars + 1))
 
-    for p in range(0,len(parentslist[0])):
-        
-        n_offspring = 1
-        offspring =  np.zeros((n_offspring, n_vars + num_step_size))
-
-        for f in range(1):
-            # get weights for weighted average by using softmax
-            # weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(fit_poplist))])
-            weights = softmax([np.random.uniform(1) for p_idx in range(len(fit_poplist))])
-            # cross_prob = np.random.uniform(0,1)
-            offspring[f] = np.zeros((n_offspring, n_vars + num_step_size))
-
-            for i, w in enumerate(weights):
-                offspring[f] += w * poplist[i][parentslist[i][p]]
-
-            #check if initializing the stepsize randomly affects the performance of the model
-
-            # calculate the fitness of the offspring and compute it's percentile in the population
-            offspring_fitness = simulation(environment, offspring[f])
-            percentile = fitness_percentile(offspring_fitness, fit_poplist[0])
-
-            # obtain the current step_size from the offspring 
-            step_size = offspring[f][n_vars]
-            
-            new_step_size = 0
-
-            # update the stepsize for adaptive step-size but also take the fitness of the offspring into account by adjusting the mean of the normal distribution
-            # if the offspring is below a certain percentile in the population mean is increased such that the stepsize on average slightly increases and conversely
-            # if the offspring is above a certain percentile decrease the mean slightly to decrease the stepsize
-            if percentile < l_percentile_guided:
-                new_step_size = step_size * exp(learning_rate * np.random.normal(guided_influence, 1))
-            elif percentile > u_percentile_guided:
-                new_step_size = step_size * exp(learning_rate * np.random.normal( - guided_influence, 1))
-            else:
-                new_step_size = step_size * exp(learning_rate * np.random.normal(0, 1))
-
-            # ensures step size stays within boundaries
-            new_step_size = boundaries_step_size(new_step_size)
-
-            # set the new stepsize for the offspring
-            offspring[f][n_vars] = new_step_size
-
-            # mutation using updated step size
-            for i in range(0,len(offspring[f]) - num_step_size):
-                if np.random.uniform(0 ,1)<=mutation:
-                    offspring[f][i] =   offspring[f][i]+np.random.normal(0, new_step_size)
-
-            offspring[f] = np.array(list(map(lambda y: limits(y), offspring[f])))
-
-            total_offspring = np.vstack((total_offspring, offspring[f]))
-
-    return total_offspring
-
-def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist, weighted=False):
-    print("Epoch Crossover with static mutation")
-    # initialize output array 
-    total_offspring = np.zeros((0,n_vars + 1))
+    # initialize output array for the offspring with random ratios
+    total_offspring_all = np.zeros((0,n_vars + 1))
     
     for p in range(0,len(parentslist[0])):
-        
+
         n_offspring = 1
-        offspring =  np.zeros((n_offspring, n_vars + num_step_size))
+        offspring_gen =  np.zeros((n_offspring, n_vars + num_step_size))
 
-        for f in range(1):
-            # get weights for weighted average by using softmax
-            if weighted:
-                weights = softmax([fit_poplist[p_idx][parentslist[p_idx][p]] for p_idx in range(len(poplist))])
-            # simply average withouts weights - should improve impact of individuals from tough islands
-            else:
-                weights = [1/len(poplist)] * len(poplist)
-
+        # create offspring consisting of a certain guaranteed ratio of the generalist parent
+        for f in range(n_offspring):
+            ratios = [np.random.uniform(0, 1) for i in range(len(fit_poplist) - num_gen_islands)]
+            print("ratios: ")
+            print(ratios)
+            weights = list(softmax(ratios))
+            spec_ratio = 1 - generalist_ratio
+            weights = [r * spec_ratio for r in weights]
+            # select the generalist parent that will be used for the offspring
+            gen_parent = random.randint(0, num_gen_islands - 1)
+            # set the weight of the chosen parent to the set ratio while the other generalist parents get weight 0
+            for i in range(num_gen_islands):
+                if gen_parent == i:
+                    weights.insert(i, generalist_ratio)
+                else:
+                    weights.insert(i, 0)
+            for i, w in enumerate(weights):
+                print("weight island " + str(i) + ": " + str(w))
             # cross_prob = np.random.uniform(0,1)
-            offspring[f] = np.zeros((n_offspring, n_vars + num_step_size))
 
             for i, w in enumerate(weights):
-                offspring[f] += w * poplist[i][parentslist[i][p]]
+                offspring_gen[f] += w * poplist[i][parentslist[i][p]]
 
-            # mutation using updated step size
-            for i in range(0,len(offspring[f]) - num_step_size):
-                if np.random.uniform(0 ,1)<=mutation:
-                    offspring[f][i] =   offspring[f][i]+np.random.normal(0, init_step_size)
+            offspring_gen[f] = self_adaptive_fitness_based_step_size_mutation(offspring_gen[f], fit_poplist, environment)
 
-            offspring[f] = np.array(list(map(lambda y: limits(y), offspring[f])))
+            total_offspring_gen = np.vstack((total_offspring_gen, offspring_gen[f]))
 
-            total_offspring = np.vstack((total_offspring, offspring[f]))
 
-    return total_offspring
+        offspring_all =  np.zeros((n_offspring, n_vars + num_step_size))
+
+        # creating offspring from random ratios of all parents
+        for f in range(n_offspring):
+            weights = softmax([np.random.uniform(1) for p_idx in range(len(fit_poplist))])
+            # cross_prob = np.random.uniform(0,1)
+            offspring_all[f] = np.zeros((n_offspring, n_vars + num_step_size))
+
+            for i, w in enumerate(weights):
+                offspring_all[f] += w * poplist[i][parentslist[i][p]]
+
+            offspring_all[f] = self_adaptive_fitness_based_step_size_mutation(offspring_all[f], fit_poplist, environment)
+            total_offspring_all = np.vstack((total_offspring_all, offspring_all[f]))
+    
+    print("amount of offspring in the gen: " + str(total_offspring_gen.shape[0]))
+    print("amount of offspring in the all: " + str(total_offspring_all.shape[0]))
+
+    return total_offspring_gen, total_offspring_all
+
+def static_mutation(offspring):
+    for i in range(0,len(offspring) - num_step_size):
+        if np.random.uniform(0 ,1)<=mutation:
+            offspring[i] =   offspring[i]+np.random.normal(0, init_step_size)
+
+    offspring = np.array(list(map(lambda y: limits(y), offspring)))
+    pass
+
+def crossover_static_mutation_epoch(poplist, fit_poplist, parentslist, num_gen_islands, generalist_ratio):
+    print("Epoch Crossover with static mutation")
+    
+    # initialize output array for the offspring with certain ratio of the generalist parent.
+    total_offspring_gen = np.zeros((0,n_vars + 1))
+
+    # initialize output array for the offspring with random ratios
+    total_offspring_all = np.zeros((0,n_vars + 1))
+    
+    for p in range(0,len(parentslist[0])):
+
+        n_offspring = 1
+        offspring_gen =  np.zeros((n_offspring, n_vars + num_step_size))
+
+        # create offspring consisting of a certain guaranteed ratio of the generalist parent
+        for f in range(n_offspring):            
+            ratios = [np.random.uniform(0, 1) for i in range(len(fit_poplist) - num_gen_islands)]
+            print("ratios: ")
+            print(ratios)
+            weights = list(softmax(ratios))
+            spec_ratio = 1 - generalist_ratio
+            weights = [r * spec_ratio for r in weights]
+            # select the generalist parent that will be used for the offspring
+            gen_parent = random.randint(0, num_gen_islands - 1)
+            # set the weight of the chosen parent to the set ratio while the other generalist parents get weight 0
+            for i in range(num_gen_islands):
+                if gen_parent == i:
+                    weights.insert(i, generalist_ratio)
+                else:
+                    weights.insert(i, 0)
+            for i, w in enumerate(weights):
+                print("weight island " + str(i) + ": " + str(w))
+            # cross_prob = np.random.uniform(0,1)
+
+            for i, w in enumerate(weights):
+                offspring_gen[f] += w * poplist[i][parentslist[i][p]]
+
+            offspring_gen[f] = static_mutation(offspring_gen[f])
+
+            total_offspring_gen = np.vstack((total_offspring_gen, offspring_gen[f]))
+
+
+        offspring_all =  np.zeros((n_offspring, n_vars + num_step_size))
+
+        # creating offspring from random ratios of all parents
+        for f in range(n_offspring):
+            weights = softmax([np.random.uniform(1) for p_idx in range(len(fit_poplist))])
+            # cross_prob = np.random.uniform(0,1)
+            offspring_all[f] = np.zeros((n_offspring, n_vars + num_step_size))
+
+            for i, w in enumerate(weights):
+                offspring_all[f] += w * poplist[i][parentslist[i][p]]
+
+            offspring_all[f] = static_mutation(offspring_all[f])
+            total_offspring_all = np.vstack((total_offspring_all, offspring_all[f]))
+    
+    print("amount of offspring in the gen: " + str(total_offspring_gen.shape[0]))
+    print("amount of offspring in the all: " + str(total_offspring_all.shape[0]))
+
+    return total_offspring_gen, total_offspring_all
 
 def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
 # 
@@ -452,16 +534,26 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
     combined_pop = pop_gens + pop_specs
     combined_fit_pop = fit_pop_gens + fit_pop_specs
     combined_env = env_gens + env_specs
-   
-    offspringepoch = crossover_epoch(combined_pop, combined_fit_pop, 
-                                    parents, env_gens[0]) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
-                                    combined_pop, combined_fit_pop, parents)
+    num_gen_islands = len(env_gens)
+
+    generalist_ratio = start_val_gen_ratio + ((end_val_gen_ratio - start_val_gen_ratio) / total_epochs) * epoch_number
+    print("generalist ratio: " + str(generalist_ratio))
+
+    offspringepoch_gen, offspringepoch_all = crossover_epoch(combined_pop, combined_fit_pop, 
+                                    parents, env_gens[0], num_gen_islands, generalist_ratio) if experiment_type == "dynamic" else crossover_static_mutation_epoch(
+                                    combined_pop, combined_fit_pop, parents, num_gen_islands, generalist_ratio)
     #offspring_placements = [similar_island(individual, combined_pop, 0.8) for individual in offspringepoch]
-    offspring_placements = offspring_placements = [similar_island(individual, combined_pop) if similar_migration else least_similar_island(individual, combined_pop) for individual in offspringepoch]
+    offspring_all_placements = [similar_island(individual, combined_pop) if similar_migration else least_similar_island(individual, combined_pop) for individual in offspringepoch_all]
+    offspring_gen_placements = offspring_gen_placement(num_gen_islands, offspringepoch_gen)
+
+    total_offspring = np.vstack((offspringepoch_gen, offspringepoch_all))
+    offspring_placements = offspring_gen_placements + offspring_all_placements
+
+    print("offspring placements: " + str(offspring_placements))
 
     for i, (pop_total, fit_pop_total, env) in enumerate(zip(combined_pop, combined_fit_pop, combined_env)):
         pop_similars = []
-        for idx, individual in enumerate(offspringepoch):
+        for idx, individual in enumerate(total_offspring):
             if offspring_placements[idx] == i:
                 pop_similars.append(individual)
         if len(pop_similars) != 0:
@@ -472,7 +564,8 @@ def evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env
             solutions = [pop_total, fit_pop_total]
             env.update_solutions(solutions)
         
-    env_general.save_state()
+    for env_gen in env_gens:
+        env_gen.save_state()
 
 
 # loads file with the best solution for testing
@@ -549,9 +642,12 @@ std = std_gen[best_gen_idx]
 file_aux  = open(experiment_name+'/results.txt','a')
 file_aux.write('\n\ngen best mean std')
 
+
 print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop_gens[best_gen_idx][best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
 file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop_gens[best_gen_idx][best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
 file_aux.close()       
+
+
 
 for i in range(ini_g+1, gens):
 
@@ -597,7 +693,8 @@ for i in range(ini_g+1, gens):
     # saves file with the best solution
     np.savetxt(experiment_name+'/best.txt',pop_gens[best_gen_idx][best])
 
-    if i % 10 == 0:
+    if i % epoch_frequency == 0:
+        epoch_number += 1
         evolve_epoch(pop_gens, fit_pop_gens, pop_specs, fit_pop_specs, env_gens, env_specs)
 
 
