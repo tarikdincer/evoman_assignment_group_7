@@ -10,7 +10,7 @@ import sys
 import time
 from math import fabs,sqrt,exp
 import random
-import optuna
+#import optuna
 
 from evoman.environment import Environment
 from demo_controller import player_controller
@@ -38,7 +38,7 @@ if headless:
     os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 
-experiment_name = 'generalist_test_task'
+experiment_name = 'generalist_baseline'
 if not os.path.exists(experiment_name):
     os.makedirs(experiment_name)
 
@@ -223,6 +223,9 @@ def truncation_random_hybrid_selection(pop,fit, nparents, ratio):
 
     return best_individuals + random_ind
 
+def pop_std(pop):
+    return np.mean(np.std(np.stack(pop), axis=0))
+
 
 # loads file with the best solution for testing
 """if run_mode =='test':
@@ -238,108 +241,107 @@ evolution_number = 0
 
 def evolutionary_algorithm(evo_param):
     # Extract the EA parameters from the dictionary initialized in the optuna objective function
-    ratio = evo_param['ratio']
-    dom_u = evo_param['dom_u']
-    dom_l = evo_param['dom_l']
-    npop = evo_param['npop']
-    gens = evo_param['gens']
-    mutation = evo_param['mutation']
-    learning_rate = evo_param['learning_rate']
-    init_step_size = evo_param['init_step_size']
-    u_boundary_step_size = evo_param['u_boundary_step_size']
-    l_boundary_step_size = evo_param['l_boundary_step_size']
-    l_percentile_guided = evo_param['l_percentile_guided']
-    u_percentile_guided = evo_param['u_percentile_guided']
-    guided_influence = evo_param['guided_influence']
+    for run in range(10):
+        ratio = evo_param['ratio']
+        dom_u = evo_param['dom_u']
+        dom_l = evo_param['dom_l']
+        npop = evo_param['npop']
+        gens = 5
+        mutation = evo_param['mutation']
+        learning_rate = evo_param['learning_rate']
+        init_step_size = evo_param['init_step_size']
+        u_boundary_step_size = 1
+        l_boundary_step_size = 0
+        l_percentile_guided = evo_param['l_percentile_guided']
+        u_percentile_guided = evo_param['u_percentile_guided']
+        guided_influence = evo_param['guided_influence']
 
-    global evolution_number
-    personal_number = evolution_number
-    # to keep track on the number of evolutions optuna has done
-    evolution_number += 1
+        # global evolution_number
+        # personal_number = evolution_number
+        # # to keep track on the number of evolutions optuna has done
+        # evolution_number += 1
 
-    env = Environment(experiment_name=experiment_name,
-                enemies=[3,5,7,8],
-                multiplemode="yes",
-                playermode="ai",
-                player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
-                enemymode="static",
-                level=2,
-                speed="fastest",
-                visuals=False)
-
-
-    # number of weights for multilayer with 10 hidden neurons
-    n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5
-
-    print( '\nNEW EVOLUTION ' + str(personal_number) + '\n')
-    print('parameters for current evolution: ')
-    for key, value in evo_param.items():
-        print(f'{key}: {value}')
-
-    pop = np.random.uniform(dom_l, dom_u, (npop, n_vars)) # creating npop size nn's with weights in between -1 and 1
-    pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
-    fit_pop = evaluate(env, pop) #returns an array that stores the fitness of each nn
-    best = np.argmax(fit_pop)
-    mean = np.mean(fit_pop)
-    std = np.std(fit_pop)
-    ini_g = 0
-    solutions = [pop, fit_pop]
-    env.update_solutions(solutions)
-        
-
-    # saves results for first pop
-    """file_aux  = open(experiment_name + '/results' + str(evolution_number) + '.txt', 'a')
-    file_aux.write('\n\ngen best mean std')
-    print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
-    file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
-    file_aux.close()"""
+        env = Environment(experiment_name=experiment_name,
+                    enemies=[3,5,7,8],
+                    multiplemode="yes",
+                    playermode="ai",
+                    player_controller=player_controller(n_hidden_neurons), # you  can insert your own controller here
+                    enemymode="static",
+                    level=2,
+                    speed="fastest",
+                    visuals=False)
 
 
-    # evolution
+        # number of weights for multilayer with 10 hidden neurons
+        n_vars = (env.get_num_sensors()+1)*n_hidden_neurons + (n_hidden_neurons+1)*5
 
-    last_sol = fit_pop[best]
-    notimproved = 0
+        print( '\nNEW EVOLUTION ' + str(run) + '\n')
+        print('parameters for current evolution: ')
+        for key, value in evo_param.items():
+            print(f'{key}: {value}')
 
-    for i in range(ini_g+1, gens):
-        parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
-        random.shuffle(parents)
-        offspring = crossover(pop, fit_pop, parents, learning_rate, guided_influence, mutation, l_boundary_step_size, u_boundary_step_size, dom_l, dom_u, l_percentile_guided, u_percentile_guided, n_vars, env) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents, mutation, init_step_size, dom_l, dom_u, n_vars) # crossover
-        fit_offspring = evaluate(env, offspring)   # evaluation
-        pop = np.vstack((pop,offspring))
-        fit_pop = np.append(fit_pop,fit_offspring)
-
-        best = np.argmax(fit_pop) #best solution in generation
-        fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
-        best_sol = fit_pop[best]
-
-        pop, fit_pop = survival_selection(pop, fit_pop, npop)
-
+        pop = np.random.uniform(dom_l, dom_u, (npop, n_vars)) # creating npop size nn's with weights in between -1 and 1
+        pop = np.hstack([pop, np.full((pop.shape[0], 1), init_step_size)])
+        fit_pop = evaluate(env, pop) #returns an array that stores the fitness of each nn
         best = np.argmax(fit_pop)
-        std  =  np.std(fit_pop)
         mean = np.mean(fit_pop)
-
-
-        # saves results
-        """file_aux  = open(experiment_name + '/results' + str(evolution_number) + '.txt', 'a')
-        print( '\n GENERATION '+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)))
-        file_aux.write('\n'+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6))   )
-        file_aux.close()"""
-        print( '\n GENERATION '+str(i)+' from evolution '+ str(personal_number) + ' ' + str(round(fit_pop[best],6)) + ' ' + str(round(mean,6)) + ' ' + str(round(std,6)))
-
-        # saves generation number
-        """file_aux  = open(experiment_name+'/gen.txt','w')
-        file_aux.write(str(i))
-        file_aux.close()"""
-
-        # saves file with the best solution
-        np.savetxt(experiment_name + '/best' + str(personal_number) + '.txt' , pop[best])
-
-        # saves simulation state
+        std = np.std(fit_pop)
+        ini_g = 0
         solutions = [pop, fit_pop]
         env.update_solutions(solutions)
-        env.save_state()
+            
 
-    return fit_pop[best]
+        # saves results for first pop
+        file_aux  = open(experiment_name + '/results' + str(run) + '.txt', 'a')
+        file_aux.write('\n\ngen best mean std div')
+        file_aux.write('\n'+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)) + ' ' + str(round(pop_std(pop), 6))  )
+        file_aux.close()
+        print( '\n GENERATION '+str(ini_g)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)) + ' ' + str(round(pop_std(pop), 6)))
+
+        # evolution
+
+        last_sol = fit_pop[best]
+        notimproved = 0
+
+        for i in range(ini_g+1, gens):
+            parents = truncation_random_hybrid_selection(pop, fit_pop, pop.shape[0] // 2, ratio)
+            random.shuffle(parents)
+            offspring = crossover(pop, fit_pop, parents, learning_rate, guided_influence, mutation, l_boundary_step_size, u_boundary_step_size, dom_l, dom_u, l_percentile_guided, u_percentile_guided, n_vars, env) if experiment_type == "dynamic" else crossover_static_mutation(pop, fit_pop, parents, mutation, init_step_size, dom_l, dom_u, n_vars) # crossover
+            fit_offspring = evaluate(env, offspring)   # evaluation
+            pop = np.vstack((pop,offspring))
+            fit_pop = np.append(fit_pop,fit_offspring)
+
+            best = np.argmax(fit_pop) #best solution in generation
+            fit_pop[best] = float(evaluate(env, np.array([pop[best] ]))[0]) # repeats best eval, for stability issues
+            best_sol = fit_pop[best]
+
+            pop, fit_pop = survival_selection(pop, fit_pop, npop)
+
+            best = np.argmax(fit_pop)
+            std  =  np.std(fit_pop)
+            mean = np.mean(fit_pop)
+
+
+            # saves results
+            file_aux  = open(experiment_name + '/results' + str(run) + '.txt', 'a')
+            file_aux.write('\n'+str(i)+' '+str(round(fit_pop[best],6))+' '+str(round(mean,6))+' '+str(round(std,6)) + ' ' + str(round(pop_std(pop), 6)))
+            file_aux.close()
+            print( '\n GENERATION '+str(i)+' from evolution '+ str(run) + ' ' + str(round(fit_pop[best],6)) + ' ' + str(round(mean,6)) + ' ' + str(round(std,6)) + ' ' + str(round(pop_std(pop),6)))
+
+            # saves generation number
+            file_aux  = open(experiment_name+'/gen.txt','w')
+            file_aux.write(str(i))
+            file_aux.close()
+
+            # saves file with the best solution
+            np.savetxt(experiment_name + '/best' + str(run) + '.txt' , pop[best])
+
+            # saves simulation state
+            solutions = [pop, fit_pop]
+            env.update_solutions(solutions)
+            env.save_state()
+
+        #return fit_pop[best]
 
 # Optuna objective function
 def objective(trial):
@@ -363,10 +365,14 @@ def objective(trial):
 
     return best
 
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=50, n_jobs=-1)
-params = study.best_trial.params
-print('Best trial:', study.best_trial.params)
+# study = optuna.create_study(direction='maximize')
+# study.optimize(objective, n_trials=50, n_jobs=-1)
+# params = study.best_trial.params
+# print('Best trial:', study.best_trial.params)
+
+evoparams = {'ratio': 0.40888884079383736, 'dom_u': 1.3288762810281702, 'dom_l': -1.3323823224940499, 'npop': 140, 'mutation': 0.30000000000000004, 'learning_rate': 0.06308261258328778, 'init_step_size': 0.09946600396334193, 'l_percentile_guided': 15, 'u_percentile_guided': 90, 'guided_influence': 0.15822732383302338}
+
+best = evolutionary_algorithm(evoparams)
 
 fim = time.time() # prints total execution time for experiment
 print( '\nExecution time: '+str(round((fim-ini)/60))+' minutes \n')
