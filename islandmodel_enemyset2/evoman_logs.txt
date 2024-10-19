@@ -1,0 +1,7 @@
+
+
+MESSAGE: Pygame initialized for simulation.
+
+PARAMETER CHANGE: speed = normal
+
+PARAMETER CHANGE: visuals = True
